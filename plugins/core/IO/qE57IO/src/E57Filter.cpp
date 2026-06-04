@@ -49,6 +49,7 @@ namespace
 {
 	constexpr char CC_E57_INTENSITY_FIELD_NAME[] = "Intensity";
 	constexpr char CC_E57_RETURN_INDEX_FIELD_NAME[] = "Return index";
+	constexpr char CC_E57_TIME_STAMP_FIELD_NAME[] = "Timestamp";
 	constexpr char s_e57PoseKey[] = "E57_pose";
 
 	constexpr uint8_t VALID_DATA = 0;
@@ -56,15 +57,15 @@ namespace
 
 	unsigned s_absoluteScanIndex = 0;
 	bool s_cancelRequestedByUser = false;
-	
+
 	unsigned s_absoluteImageIndex = 0;
-	
+
 	ScalarType s_maxIntensity = 0;
 	ScalarType s_minIntensity = 0;
-	
+
 	//for coordinate shift handling
 	FileIOFilter::LoadParameters s_loadParameters;
-	
+
 	//Array chunks for reading/writing information out of E57 files
 	struct TempArrays
 	{
@@ -73,16 +74,19 @@ namespace
 		std::vector<double> yData;
 		std::vector<double> zData;
 		std::vector<int8_t> isInvalidData;
-	
+
 		//normals
 		std::vector<double> xNormData;
 		std::vector<double> yNormData;
 		std::vector<double> zNormData;
-	
+
 		//scalar field
 		std::vector<double>	intData;
 		std::vector<int8_t> isInvalidIntData;
-	
+		//timestamp field
+		std::vector<double> timeData;
+		std::vector<int8_t> isInvalidTimeData;
+
 		//scan index field
 		std::vector<int8_t> scanIndexData;
 
@@ -95,7 +99,7 @@ namespace
 		std::vector<colorFieldType> greenData;
 		std::vector<colorFieldType> blueData;
 	};
-	
+
 	inline QString GetNewGuid()
 	{
 		return QUuid::createUuid().toString();
@@ -325,7 +329,7 @@ static bool SaveScan(ccPointCloud* cloud, e57::StructureNode& scanNode, e57::Ima
 				{
 					int minScanIndex = static_cast<int>(intMin);
 					int maxScanIndex = static_cast<int>(intMax);
-					
+
 					minReturnIndex = minScanIndex;
 					maxReturnIndex = maxScanIndex;
 					if (maxReturnIndex>minReturnIndex)
@@ -611,7 +615,7 @@ static bool SaveScan(ccPointCloud* cloud, e57::StructureNode& scanNode, e57::Ima
 				assert(!arrays.scanIndexData.empty());
 				arrays.scanIndexData[i] = static_cast<int8_t>(returnIndexSF->getValue(index));
 			}
-			
+
 			if (!nprogress.oneStep())
 			{
 				QApplication::processEvents();
@@ -621,7 +625,7 @@ static bool SaveScan(ccPointCloud* cloud, e57::StructureNode& scanNode, e57::Ima
 		}
 
 		writer.write(thisChunkSize);
-		
+
 		assert(thisChunkSize <= remainingPointCount);
 		remainingPointCount -= thisChunkSize;
 	}
@@ -894,12 +898,12 @@ CC_FILE_ERROR E57Filter::saveToFile(ccHObject* entity, const QString& filename, 
 						.arg( e.sourceFileName() )
 						.arg( e.sourceLineNumber() )
 						);
-		
+
 		if ( !e.context().empty() )
 		{
 			ccLog::Warning( QStringLiteral("    context: %1").arg( QString::fromStdString( e.context() ) ) );
 		}
-		
+
 		result = CC_FERR_THIRD_PARTY_LIB_EXCEPTION;
 	}
 	catch (...)
@@ -1114,7 +1118,7 @@ static void DecodePrototype(const e57::StructureNode& scan, const e57::Structure
 
 	header.pointFields.pointRangeScaledInteger = 0; //FloatNode
 	header.pointFields.pointRangeMinimum = 0;
-	header.pointFields.pointRangeMaximum = 0; 
+	header.pointFields.pointRangeMaximum = 0;
 
 	if ( proto.isDefined("cartesianX") )
 	{
@@ -1124,7 +1128,7 @@ static void DecodePrototype(const e57::StructureNode& scan, const e57::Structure
 			double offset = e57::ScaledIntegerNode(proto.get("cartesianX")).offset();
 			int64_t minimum = e57::ScaledIntegerNode(proto.get("cartesianX")).minimum();
 			int64_t maximum = e57::ScaledIntegerNode(proto.get("cartesianX")).maximum();
-			header.pointFields.pointRangeMinimum = minimum * scale + offset;	
+			header.pointFields.pointRangeMinimum = minimum * scale + offset;
 			header.pointFields.pointRangeMaximum = maximum * scale + offset;
 			header.pointFields.pointRangeScaledInteger = scale;
 
@@ -1134,7 +1138,7 @@ static void DecodePrototype(const e57::StructureNode& scan, const e57::Structure
 			header.pointFields.pointRangeMinimum = e57::FloatNode(proto.get("cartesianX")).minimum();
 			header.pointFields.pointRangeMaximum = e57::FloatNode(proto.get("cartesianX")).maximum();
 		}
-	} 
+	}
 	else if ( proto.isDefined("sphericalRange") )
 	{
 		if ( proto.get("sphericalRange").type() == e57::E57_SCALED_INTEGER )
@@ -1143,7 +1147,7 @@ static void DecodePrototype(const e57::StructureNode& scan, const e57::Structure
 			double offset = e57::ScaledIntegerNode(proto.get("sphericalRange")).offset();
 			int64_t minimum = e57::ScaledIntegerNode(proto.get("sphericalRange")).minimum();
 			int64_t maximum = e57::ScaledIntegerNode(proto.get("sphericalRange")).maximum();
-			header.pointFields.pointRangeMinimum = minimum * scale + offset;	
+			header.pointFields.pointRangeMinimum = minimum * scale + offset;
 			header.pointFields.pointRangeMaximum = maximum * scale + offset;
 			header.pointFields.pointRangeScaledInteger = scale;
 
@@ -1172,7 +1176,7 @@ static void DecodePrototype(const e57::StructureNode& scan, const e57::Structure
 			double offset = e57::ScaledIntegerNode(proto.get("sphericalAzimuth")).offset();
 			int64_t minimum = e57::ScaledIntegerNode(proto.get("sphericalAzimuth")).minimum();
 			int64_t maximum = e57::ScaledIntegerNode(proto.get("sphericalAzimuth")).maximum();
-			header.pointFields.angleMinimum = minimum * scale + offset;	
+			header.pointFields.angleMinimum = minimum * scale + offset;
 			header.pointFields.angleMaximum = maximum * scale + offset;
 			header.pointFields.angleScaledInteger = scale;
 
@@ -1220,7 +1224,7 @@ static void DecodePrototype(const e57::StructureNode& scan, const e57::Structure
 			double offset = e57::ScaledIntegerNode(proto.get("nor:normalX")).offset();
 			int64_t minimum = e57::ScaledIntegerNode(proto.get("nor:normalX")).minimum();
 			int64_t maximum = e57::ScaledIntegerNode(proto.get("nor:normalX")).maximum();
-			header.pointFields.normRangeMinimum = minimum * scale + offset;	
+			header.pointFields.normRangeMinimum = minimum * scale + offset;
 			header.pointFields.normRangeMaximum = maximum * scale + offset;
 			header.pointFields.normRangeScaledInteger = scale;
 
@@ -1230,7 +1234,7 @@ static void DecodePrototype(const e57::StructureNode& scan, const e57::Structure
 			header.pointFields.normRangeMinimum = e57::FloatNode(proto.get("nor:normalX")).minimum();
 			header.pointFields.normRangeMaximum = e57::FloatNode(proto.get("nor:normalX")).maximum();
 		}
-	} 
+	}
 
 	header.pointFields.timeStampField = proto.isDefined("timeStamp");
 	header.pointFields.isTimeStampInvalidField = proto.isDefined("isTimeStampInvalid");
@@ -1270,7 +1274,7 @@ static void DecodePrototype(const e57::StructureNode& scan, const e57::Structure
 			header.intensityLimits.intensityMinimum = static_cast<double>(e57::IntegerNode(intbox.get("intensityMinimum")).value());
 		}
 	}
-	
+
 	if ( proto.isDefined("intensity") )
 	{
 		if (proto.get("intensity").type() == e57::E57_INTEGER)
@@ -1292,7 +1296,7 @@ static void DecodePrototype(const e57::StructureNode& scan, const e57::Structure
 			{
 				int64_t minimum = e57::ScaledIntegerNode(proto.get("intensity")).minimum();
 				int64_t maximum = e57::ScaledIntegerNode(proto.get("intensity")).maximum();
-				header.intensityLimits.intensityMinimum = minimum * scale + offset;	
+				header.intensityLimits.intensityMinimum = minimum * scale + offset;
 				header.intensityLimits.intensityMaximum = maximum * scale + offset;
 			}
 			header.pointFields.intensityScaledInteger = scale;
@@ -1369,7 +1373,7 @@ static void DecodePrototype(const e57::StructureNode& scan, const e57::Structure
 			double offset = e57::ScaledIntegerNode(proto.get("colorRed")).offset();
 			int64_t minimum = e57::ScaledIntegerNode(proto.get("colorRed")).minimum();
 			int64_t maximum = e57::ScaledIntegerNode(proto.get("colorRed")).maximum();
-			header.colorLimits.colorRedMinimum = minimum * scale + offset;	
+			header.colorLimits.colorRedMinimum = minimum * scale + offset;
 			header.colorLimits.colorRedMaximum = maximum * scale + offset;
 		}
 	}
@@ -1392,7 +1396,7 @@ static void DecodePrototype(const e57::StructureNode& scan, const e57::Structure
 			double offset = e57::ScaledIntegerNode(proto.get("colorGreen")).offset();
 			int64_t minimum = e57::ScaledIntegerNode(proto.get("colorGreen")).minimum();
 			int64_t maximum = e57::ScaledIntegerNode(proto.get("colorGreen")).maximum();
-			header.colorLimits.colorGreenMinimum = minimum * scale + offset;	
+			header.colorLimits.colorGreenMinimum = minimum * scale + offset;
 			header.colorLimits.colorGreenMaximum = maximum * scale + offset;
 		}
 	}
@@ -1414,7 +1418,7 @@ static void DecodePrototype(const e57::StructureNode& scan, const e57::Structure
 			double offset = e57::ScaledIntegerNode(proto.get("colorBlue")).offset();
 			int64_t minimum = e57::ScaledIntegerNode(proto.get("colorBlue")).minimum();
 			int64_t maximum = e57::ScaledIntegerNode(proto.get("colorBlue")).maximum();
-			header.colorLimits.colorRedMinimum = minimum * scale + offset;	
+			header.colorLimits.colorRedMinimum = minimum * scale + offset;
 			header.colorLimits.colorRedMaximum = maximum * scale + offset;
 		}
 	}
@@ -1453,7 +1457,7 @@ static bool GetPoseInformation(const e57::StructureNode& node, ccGLMatrixd& pose
 
 		if (pose.isDefined("translation"))
 		{
-			e57::StructureNode transNode(pose.get("translation"));  
+			e57::StructureNode transNode(pose.get("translation"));
 			poseMat.getTranslation()[0] = e57::FloatNode(transNode.get("x")).value();
 			poseMat.getTranslation()[1] = e57::FloatNode(transNode.get("y")).value();
 			poseMat.getTranslation()[2] = e57::FloatNode(transNode.get("z")).value();
@@ -1511,7 +1515,7 @@ static LoadedScan LoadScan(const e57::Node& node, QString& guidStr, ccProgressDi
 	//points
 	e57::CompressedVectorNode points(scanNode.get("points"));
 	const int64_t pointCount = points.childCount();
-	
+
 	//prototype for points
 	e57::StructureNode prototype(points.prototype());
 	E57ScanHeader header;
@@ -1520,7 +1524,7 @@ static LoadedScan LoadScan(const e57::Node& node, QString& guidStr, ccProgressDi
 	bool sphericalMode = false;
 	//no cartesian fields?
 	if (!header.pointFields.cartesianXField &&
-		!header.pointFields.cartesianYField && 
+		!header.pointFields.cartesianYField &&
 		!header.pointFields.cartesianZField)
 	{
 		//let's look for spherical ones
@@ -1537,10 +1541,10 @@ static LoadedScan LoadScan(const e57::Node& node, QString& guidStr, ccProgressDi
 	ccPointCloud* cloud = new ccPointCloud();
 
 	if (scanNode.isDefined("name"))
-	{		
+	{
 		cloud->setName(scanName);
 	}
-	
+
 	if (scanNode.isDefined("description"))
 	{
 		ccLog::Print( QStringLiteral("[E57] Internal description: %1").arg(
@@ -1723,7 +1727,7 @@ static LoadedScan LoadScan(const e57::Node& node, QString& guidStr, ccProgressDi
 			ccLog::Warning("[E57] Not enough memory to load the scan grid");
 			scanGrid.clear();
 		}
-		
+
 	}
 
 	if (sphericalMode)
@@ -1836,6 +1840,30 @@ static LoadedScan LoadScan(const e57::Node& node, QString& guidStr, ccProgressDi
 		{
 			arrays.isInvalidIntData.resize(chunkSize);
 			dbufs.emplace_back(node.destImageFile(), "isIntensityInvalid", arrays.isInvalidIntData.data(), chunkSize, true, (prototype.get("isIntensityInvalid").type() == e57::E57_SCALED_INTEGER));
+		}
+	}
+
+	// timestamp
+	ccScalarField* timeStampSF = nullptr;
+	if (header.pointFields.timeStampField)
+	{
+		timeStampSF = new ccScalarField(CC_E57_TIME_STAMP_FIELD_NAME);
+		if (!timeStampSF->resizeSafe(static_cast<unsigned>(pointCount)))
+		{
+			ccLog::Error("[E57] Not enough memory!");
+			timeStampSF->release();
+			delete cloud;
+			return {};
+		}
+		cloud->addScalarField(timeStampSF);
+
+		arrays.timeData.resize(chunkSize);
+		dbufs.emplace_back(node.destImageFile(), "timeStamp", arrays.timeData.data(), chunkSize, true, (prototype.get("timeStamp").type() == e57::E57_SCALED_INTEGER));
+
+		if (header.pointFields.isTimeStampInvalidField)
+		{
+			arrays.isInvalidTimeData.resize(chunkSize);
+			dbufs.emplace_back(node.destImageFile(), "isTimeStampInvalid", arrays.isInvalidTimeData.data(), chunkSize, true, (prototype.get("isTimeStampInvalid").type() == e57::E57_SCALED_INTEGER));
 		}
 	}
 
@@ -2040,6 +2068,20 @@ static LoadedScan LoadScan(const e57::Node& node, QString& guidStr, ccProgressDi
 				}
 			}
 
+			if (!arrays.timeData.empty())
+			{
+				assert(timeStampSF);
+				if (!header.pointFields.isTimeStampInvalidField || arrays.isInvalidTimeData[i] != INVALID_DATA)
+				{
+					const ScalarType timeStamp = static_cast<ScalarType>(arrays.timeData[i]);
+					timeStampSF->setValue(static_cast<unsigned>(realCount), timeStamp);
+				}
+				else
+				{
+					timeStampSF->flagValueAsInvalid(static_cast<unsigned>(realCount));
+				}
+			}
+
 			if (hasColors)
 			{
 				//Normalize color to 0 - 255
@@ -2086,7 +2128,7 @@ static LoadedScan LoadScan(const e57::Node& node, QString& guidStr, ccProgressDi
 		{
 			ccLog::Warning(QString("[E57] We read fewer points than expected for scan '%1' (%2/%3)").arg(scanNode.elementName().c_str()).arg(realCount).arg(pointCount));
 		}
-		
+
 		cloud->resize(static_cast<unsigned>(realCount));
 	}
 
@@ -2113,6 +2155,18 @@ static LoadedScan LoadScan(const e57::Node& node, QString& guidStr, ccProgressDi
 		cloud->showSF(true);
 	}
 
+	if (timeStampSF)
+	{
+		timeStampSF->computeMinAndMax();
+		timeStampSF->setColorScale(ccColorScalesManager::GetDefaultScale(ccColorScalesManager::GREY));
+		// Only display the timestamps if no other scalar field is already shown (e.g. intensity).
+		if (cloud->getCurrentDisplayedScalarFieldIndex() < 0)
+		{
+			cloud->setCurrentDisplayedScalarField(cloud->getScalarFieldIndexByName(timeStampSF->getName()));
+			cloud->showSF(true);
+		}
+	}
+
 	if (returnIndexSF)
 	{
 		returnIndexSF->computeMinAndMax();
@@ -2128,7 +2182,7 @@ static LoadedScan LoadScan(const e57::Node& node, QString& guidStr, ccProgressDi
 	if (validPoseMat)
 	{
 		const ccGLMatrix poseMatf(poseMat.data());
-		
+
 		cloud->applyGLTransformation_recursive(&poseMatf);
 		//this transformation is of no interest for the user
 		cloud->resetGLTransformationHistory_recursive();
@@ -2255,7 +2309,7 @@ static LoadedImage LoadImage(const e57::Node& node, QString& associatedData3DGui
 		ccLog::Warning("[E57] Not enough memory to load image!");
 		return {};
 	}
-	
+
 	if (cameraRepresentationNode.isDefined("imageMask"))
 		visualRefRepresentation->imageMaskSize = e57::BlobNode(cameraRepresentationNode.get("imageMask")).byteCount();
 
@@ -2370,7 +2424,7 @@ static LoadedImage LoadImage(const e57::Node& node, QString& associatedData3DGui
 			float pixelWidth_mm   = static_cast<float>(pinhole->pixelWidth * 1000.0);
 			float pixelHeight_mm  = static_cast<float>(pinhole->pixelHeight * 1000.0);
 			float ccdHeight_mm    = static_cast<float>(pinhole->imageHeight * pixelHeight_mm);
-			
+
 			ccCameraSensor::IntrinsicParameters params;
 			params.vertFocal_pix      = ccCameraSensor::ConvertFocalMMToPix(focal_mm, pixelHeight_mm);
 			params.arrayWidth         = pinhole->imageWidth;
@@ -2380,7 +2434,7 @@ static LoadedImage LoadImage(const e57::Node& node, QString& associatedData3DGui
 			params.pixelSize_mm[0]    = pixelWidth_mm;
 			params.pixelSize_mm[1]    = pixelHeight_mm;
 			params.vFOV_rad           = ccCameraSensor::ComputeFovRadFromFocalMm(focal_mm, ccdHeight_mm);
-			
+
 			output.sensor = new ccCameraSensor(params);
 			if (output.validPoseMat)
 			{
@@ -2423,12 +2477,12 @@ static LoadedImage LoadImage(const e57::Node& node, QString& associatedData3DGui
 CC_FILE_ERROR E57Filter::loadFile(const QString& filename, ccHObject& container, LoadParameters& parameters)
 {
 	s_loadParameters = parameters;
-	
+
 	CC_FILE_ERROR result = CC_FERR_NO_ERROR;
 	try
 	{
 		e57::ImageFile imf(filename.toStdString(), "r", e57::CHECKSUM_POLICY_SPARSE);
-		
+
 		if (!imf.isOpen())
 		{
 			return CC_FERR_READING;
@@ -2446,7 +2500,7 @@ CC_FILE_ERROR E57Filter::loadFile(const QString& filename, ccHObject& container,
 
 		//header info
 		e57::StructureNode rootStruct = e57::StructureNode(root);
-		
+
 		if (!ChildNodeToConsole(rootStruct,"formatName") ||
 				!ChildNodeToConsole(rootStruct,"guid") ||
 				!ChildNodeToConsole(rootStruct,"versionMajor") ||
@@ -2455,7 +2509,7 @@ CC_FILE_ERROR E57Filter::loadFile(const QString& filename, ccHObject& container,
 			imf.close();
 			return CC_FERR_MALFORMED_FILE;
 		}
-		
+
 		//unroll structure in tree (it's a quick to check structure + informative for user)
 		ccHObject* fileStructureTree = new ccHObject("File structure");
 		if (!NodeStructureToTree(fileStructureTree, rootStruct))
@@ -2510,9 +2564,9 @@ CC_FILE_ERROR E57Filter::loadFile(const QString& filename, ccHObject& container,
 			{
 				const e57::Node scanNode = data3D.get(i);
 				QString scanGUID;
-				
+
 				LoadedScan scan = LoadScan(scanNode, scanGUID, showGlobalProgress ? nullptr : progressDlg.data());
-				
+
 				if (scan.entity)
 				{
 					if (scan.entity->getName().isEmpty())
@@ -2535,7 +2589,7 @@ CC_FILE_ERROR E57Filter::loadFile(const QString& filename, ccHObject& container,
 						scans.insert(scanGUID, scan);
 					}
 				}
-				
+
 				if ((showGlobalProgress && progressDlg && !nprogress.oneStep()) || s_cancelRequestedByUser)
 				{
 					break;
@@ -2577,7 +2631,7 @@ CC_FILE_ERROR E57Filter::loadFile(const QString& filename, ccHObject& container,
 				imf.close();
 				return CC_FERR_MALFORMED_FILE;
 			}
-			
+
 			e57::VectorNode images2D(n);
 
 			unsigned imageCount = static_cast<unsigned>(images2D.childCount());
@@ -2675,13 +2729,13 @@ CC_FILE_ERROR E57Filter::loadFile(const QString& filename, ccHObject& container,
 				}
 			}
 		}
-		
-		imf.close();		
+
+		imf.close();
 	}
 	catch (const e57::E57Exception& e)
 	{
 		ccLog::Warning(QString("[E57] Error: %1").arg(e57::Utilities::errorCodeToString(e.errorCode()).c_str()));
-		
+
 		if ( !e.context().empty() )
 		{
 			ccLog::Warning( QStringLiteral("    context: %1").arg( QString::fromStdString( e.context() ) ) );
