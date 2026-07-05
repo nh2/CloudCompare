@@ -131,7 +131,7 @@ ccGenericPointCloud* cc2DLabel::PickedPoint::cloudOrVertices() const
 		return _cloud;
 	if (_mesh)
 		return _mesh->getAssociatedCloud();
-	
+
 	assert(false);
 	return nullptr;
 }
@@ -211,7 +211,9 @@ QString cc2DLabel::getTitle(int precision) const
 		title = m_name;
 		title.replace(POINT_INDEX_0, m_pickedPoints[0].itemTitle());
 
-		//if available, we display the point SF value
+		// If available, we display the point's currently selected SF value.
+		// A point cloud may have very many scalar fields (e.g. multi-spectral data),
+		// so we show ALL of them in the Console only, not in this popup.
 		LabelInfo1 info;
 		getLabelInfo1(info);
 		if (info.hasSF)
@@ -359,7 +361,7 @@ void cc2DLabel::updateName()
 		setName(m_pickedPoints[0].prefix(POINT_INDEX_0));
 	}
 	break;
-	
+
 	case 2:
 	{
 		if (m_pickedPoints[0].entity() == m_pickedPoints[1].entity())
@@ -374,7 +376,7 @@ void cc2DLabel::updateName()
 		}
 	}
 	break;
-	
+
 	case 3:
 	{
 		if (	m_pickedPoints[0].entity() == m_pickedPoints[2].entity() && m_pickedPoints[1].entity() == m_pickedPoints[2].entity() )
@@ -391,7 +393,7 @@ void cc2DLabel::updateName()
 		}
 	}
 	break;
-	
+
 	}
 }
 
@@ -488,7 +490,7 @@ bool cc2DLabel::toFile_MeOnly(QFile& out, short dataVersion) const
 		uint32_t meshID = static_cast<uint32_t>(it->_mesh ? it->_mesh->getUniqueID() : 0);
 		if (out.write((const char*)&meshID, 4) < 0)
 			return WriteError();
-		
+
 		//uv coordinates in the triangle (dataVersion >= 49)
 		if (out.write((const char*)it->uv.u, sizeof(double) * 2) < 0)
 			return WriteError();
@@ -650,7 +652,7 @@ void AddPointCoordinates(QStringList& body, const cc2DLabel::PickedPoint& pp, in
 {
 	QString pointShortName;
 	ccShiftedObject* shiftedObject = nullptr;
-	
+
 	if (pp._cloud)
 	{
 		shiftedObject = pp._cloud;
@@ -735,6 +737,23 @@ void cc2DLabel::getLabelInfo1(LabelInfo1& info) const
 					info.sfName = "Scalar";
 				}
 			}
+
+			// all scalar fields (not just the displayed one)
+			if (pp._cloud->isA(CC_TYPES::POINT_CLOUD))
+			{
+				ccPointCloud* pc      = static_cast<ccPointCloud*>(pp._cloud);
+				unsigned      sfCount = pc->getNumberOfScalarFields();
+				for (unsigned i = 0; i < sfCount; ++i)
+				{
+					const CCCoreLib::ScalarField* sf = pc->getScalarField(static_cast<int>(i));
+					if (!sf)
+						continue;
+					SFValue sfVal;
+					sfVal.name  = QString::fromStdString(sf->getName());
+					sfVal.value = sf->getValue(pp.index);
+					info.sfValues.push_back(sfVal);
+				}
+			}
 		}
 		else if (pp._mesh)
 		{
@@ -786,7 +805,7 @@ void cc2DLabel::getLabelInfo1(LabelInfo1& info) const
 					s2 = vertices->getPointScalarValue(vi->i2);
 					s3 = vertices->getPointScalarValue(vi->i3);
 				}
-			
+
 				//interpolate the SF value
 				if (ccScalarField::ValidValue(s1) && ccScalarField::ValidValue(s2) && ccScalarField::ValidValue(s3))
 				{
@@ -805,6 +824,33 @@ void cc2DLabel::getLabelInfo1(LabelInfo1& info) const
 				else
 				{
 					info.sfName = "Scalar";
+				}
+
+				// all scalar fields (not just the displayed one), interpolated on the triangle
+				if (vertices->isA(CC_TYPES::POINT_CLOUD))
+				{
+					ccPointCloud* pc      = static_cast<ccPointCloud*>(vertices);
+					unsigned      sfCount = pc->getNumberOfScalarFields();
+					for (unsigned i = 0; i < sfCount; ++i)
+					{
+						const CCCoreLib::ScalarField* asf = pc->getScalarField(static_cast<int>(i));
+						if (!asf)
+							continue;
+						ScalarType v1 = asf->getValue(vi->i1);
+						ScalarType v2 = asf->getValue(vi->i2);
+						ScalarType v3 = asf->getValue(vi->i3);
+						SFValue    sfVal;
+						sfVal.name = QString::fromStdString(asf->getName());
+						if (ccScalarField::ValidValue(v1) && ccScalarField::ValidValue(v2) && ccScalarField::ValidValue(v3))
+						{
+							sfVal.value = static_cast<ScalarType>(v1 * w.u[0] + v2 * w.u[1] + v3 * w.u[2]);
+						}
+						else
+						{
+							sfVal.value = CCCoreLib::NAN_VALUE;
+						}
+						info.sfValues.push_back(sfVal);
+					}
 				}
 			}
 		}
@@ -893,8 +939,16 @@ QStringList cc2DLabel::getLabelContent(int precision) const
 			QString colorStr = QString("Color: (%1;%2;%3;%4)").arg(info.color.r).arg(info.color.g).arg(info.color.b).arg(info.color.a);
 			body << colorStr;
 		}
-		//scalar field
-		if (info.hasSF)
+		// scalar fields
+		if (!info.sfValues.empty())
+		{
+			for (const SFValue& sfVal : info.sfValues)
+			{
+				QString valStr = (ccScalarField::ValidValue(sfVal.value) ? QString::number(sfVal.value, 'f', precision) : QString("NaN"));
+				body << QString("%1 = %2").arg(sfVal.name, valStr);
+			}
+		}
+		else if (info.hasSF)
 		{
 			QString sfVal = GetSFValueAsString(info, precision);
 			QString sfStr = QString("%1 = %2").arg(info.sfName, sfVal);

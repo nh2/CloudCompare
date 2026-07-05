@@ -208,6 +208,13 @@ public:
 
 protected:
 
+	//! Value of a single scalar field at the picked point
+	struct SFValue
+	{
+		QString    name;
+		ScalarType value = 0;
+	};
+
 	//! One-point label info
 	struct LabelInfo1
 	{
@@ -220,6 +227,8 @@ protected:
 		double sfShiftedValue;
 		bool sfValueIsShifted;
 		QString sfName;
+		//! Values of all scalar fields at the picked point (not just the displayed one)
+		std::vector<SFValue> sfValues;
 		//! Default constructor
 		LabelInfo1()
 			: hasNormal(false)
@@ -232,10 +241,10 @@ protected:
 			, sfValueIsShifted(false)
 		{}
 	};
-	
+
 	//! Returns one-point label info
 	void getLabelInfo1(LabelInfo1& info) const;
-	
+
 	//! Returns the SF value as a string
 	/** Handles:
 		- NaN values
